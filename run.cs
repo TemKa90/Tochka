@@ -284,7 +284,7 @@ class run
     }
 
 
-    static void Main()
+    static void Main2()
     {
         var lines = new List<string>();
         string line;
