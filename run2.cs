@@ -15,15 +15,17 @@ class Program
         (string, string) nearestGateway = getNearestGateway(position);
 
 
-        while (gateways.Count > 1)
+        while (gateways.Count > 0)
         {
-            gateways.Remove(nearestGateway);
             result.Add(string.Format("{0}-{1}", nearestGateway.Item1, nearestGateway.Item2));
+            gateways.Remove(nearestGateway);
+
+            if (gateways.Count == 0)
+                break;
+
             position = virusStep(position);
             nearestGateway = getNearestGateway(position);
         }
-
-        result.Add(string.Format("{0}-{1}", nearestGateway.Item1, nearestGateway.Item2));
 
         return result;
 
