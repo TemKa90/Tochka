@@ -1,184 +1,219 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Xml.Linq;
 
 class Program
 {
-
     static List<string> Solve(List<(string, string)> edges)
     {
         var result = new List<string>();
 
-        string position = "a";
-        List<(string, string)> gateways = getGateways(edges);
-        (string, string) nearestGateway = getNearestGateway(position);
+        Dictionary<string, HashSet<string>> graph = new Dictionary<string, HashSet<string>>();
+        HashSet<string> gateways = new HashSet<string>();
+        List<(string, string)> gatewayLinks = new List<(string, string)>();
 
-
-        while (gateways.Count > 0)
+        foreach (var (node1, node2) in edges)
         {
-            result.Add(string.Format("{0}-{1}", nearestGateway.Item1, nearestGateway.Item2));
-            gateways.Remove(nearestGateway);
+            if (!graph.ContainsKey(node1))
+                graph[node1] = new HashSet<string>();
+            if (!graph.ContainsKey(node2))
+                graph[node2] = new HashSet<string>();
 
-            if (gateways.Count == 0)
+            graph[node1].Add(node2);
+            graph[node2].Add(node1);
+
+            if (char.IsUpper(node1[0]))
+            {
+                gateways.Add(node1);
+                gatewayLinks.Add((node1, node2));
+            }
+            if (char.IsUpper(node2[0]))
+            {
+                gateways.Add(node2);
+                gatewayLinks.Add((node2, node1));
+            }
+        }
+
+        gatewayLinks.Sort();
+
+        string position = "a";
+
+        while (willIBeAcceptedForAnInternship())
+        {
+            string? nearTheExit = null;
+            if (graph.ContainsKey(position))
+            {
+                foreach (string nearestNode in graph[position])
+                {
+                    if (gateways.Contains(nearestNode))
+                    {
+                        nearTheExit = nearestNode;
+                        break;
+                    }
+                }
+            }
+
+            if (nearTheExit != null)
+            {
+                string link;
+                if (string.Compare(position, nearTheExit, StringComparison.Ordinal) < 0)
+                    link = $"{position}-{nearTheExit}";
+                else
+                    link = $"{nearTheExit}-{position}";
+
+                result.Add(link);
+                graph[position].Remove(nearTheExit);
+                graph[nearTheExit].Remove(position);
+
+                if (graph.ContainsKey(position) && graph[position].Count > 0)
+                {
+                    string target = getTargetGateway(position);
+                    if (target != null)
+                    {
+                        string nextPos = getNextStep(position, target);
+                        if (nextPos != null)
+                            position = nextPos;
+                        else
+                            break;
+                    }
+                    else
+                        break;
+                }
+                else
+                    break;
+
+                continue;
+            }
+
+            string targetGateway = getTargetGateway(position);
+            if (targetGateway == null)
                 break;
 
-            position = virusStep(position);
-            nearestGateway = getNearestGateway(position);
-        }
+            string nextStep = getNextStep(position, targetGateway);
+            if (nextStep == null)
+                break;
 
-        return result;
-
-
-
-        List<(string, string)> getGateways(List<(string, string)> edges)
-        {
-            List<(string, string)> gateways = new List<(string, string)>();
-
-            foreach ((string, string) edge in edges)
+            bool blocked = false;
+            for (int i = 0; i < gatewayLinks.Count; i++)
             {
-                if (char.IsUpper(edge.Item1[0]) || char.IsUpper(edge.Item2[0]))
+                var (gateway, node) = gatewayLinks[i];
+                if (graph.ContainsKey(gateway) && graph[gateway].Contains(node))
                 {
-                    if (char.IsUpper(edge.Item2[0]))
-                        gateways.Add((edge.Item2, edge.Item1));
-                    else
-                        gateways.Add(edge);
+                    result.Add($"{gateway}-{node}");
+                    graph[gateway].Remove(node);
+                    graph[node].Remove(gateway);
+                    gatewayLinks.RemoveAt(i);
+                    blocked = true;
+                    break;
                 }
             }
 
-            return gateways;
-        }
-
-        (string, string) getNearestGateway(string position)
-        {
-            (string, string) nearestGateway = ("", "");
-            int minDistance = int.MaxValue;
-
-            foreach ((string, string) gateway in gateways)
+            if (!blocked)
             {
-                string exit = gateway.Item1;
-                string node = gateway.Item2;
-
-                int distance = getDistance(position, node);
-
-                if (distance < minDistance)
+                List<string> availableLinks = new List<string>();
+                foreach (string gateway in gateways)
                 {
-                    minDistance = distance;
-                    nearestGateway = gateway;
-                }
-                else if (distance == minDistance)
-                {
-                    if (exit.CompareTo(nearestGateway.Item1) < 0)
+                    if (graph.ContainsKey(gateway))
                     {
-                        nearestGateway = gateway;
+                        foreach (string node in graph[gateway])
+                        {
+                            availableLinks.Add($"{gateway}-{node}");
+                        }
                     }
                 }
+
+                if (availableLinks.Count > 0)
+                {
+                    availableLinks.Sort();
+                    string link = availableLinks[0];
+                    result.Add(link);
+                    string[] parts = link.Split('-');
+                    graph[parts[0]].Remove(parts[1]);
+                    graph[parts[1]].Remove(parts[0]);
+                }
+                else
+                    break;
             }
 
-            return nearestGateway;
+            position = nextStep;
+
+            if (gateways.Contains(position))
+                break;
         }
 
-        int getDistance(string start, string end)
+
+        Dictionary<string, int> getDistances(string start)
         {
-            HashSet<string> visited = new HashSet<string>();
-            var queue = new Queue<(string node, int distance)>();
-
-            queue.Enqueue((start, 0));
-            visited.Add(start);
-
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-
-                if (current.node == end)
-                    return current.distance;
-
-                foreach ((string, string) edge in edges)
-                {
-                    string neighbor = null;
-                    if (edge.Item1 == current.node && !visited.Contains(edge.Item2))
-                    {
-                        neighbor = edge.Item2;
-                    }
-                    else if (edge.Item2 == current.node && !visited.Contains(edge.Item1))
-                    {
-                        neighbor = edge.Item1;
-                    }
-
-                    if (neighbor != null)
-                    {
-                        visited.Add(neighbor);
-                        queue.Enqueue((neighbor, current.distance + 1));
-                    }
-                }
-            }
-
-            return int.MaxValue;
-        }
-
-        string virusStep(string position)
-        {
-            (string, string) nearestGateway = getNearestGateway(position);
-            string targetGateway = nearestGateway.Item1;
-
-            List<string> path = findShortestPath(position, targetGateway);
-
-            if (path.Count > 1)
-                return path[1];
-            else
-                return position;
-        }
-
-        List<string> findShortestPath(string start, string end)
-        {
-            HashSet<string> visited = new HashSet<string>();
-            Dictionary<string, string> previous = new Dictionary<string, string>();
+            Dictionary<string, int> distances = new Dictionary<string, int> { [start] = 0 };
             Queue<string> queue = new Queue<string>();
-
             queue.Enqueue(start);
-            visited.Add(start);
-            previous[start] = null;
 
             while (queue.Count > 0)
             {
                 string current = queue.Dequeue();
 
-                if (current == end)
+                if (graph.ContainsKey(current))
                 {
-                    List<string> path = new List<string>();
-                    string node = end;
-                    while (node != null)
+                    foreach (string nearestNode in graph[current])
                     {
-                        path.Add(node);
-                        node = previous[node];
-                    }
-                    path.Reverse();
-                    return path;
-                }
-
-                foreach ((string, string) edge in edges)
-                {
-                    string neighbor = null;
-                    if (edge.Item1 == current && !visited.Contains(edge.Item2))
-                    {
-                        neighbor = edge.Item2;
-                    }
-                    else if (edge.Item2 == current && !visited.Contains(edge.Item1))
-                    {
-                        neighbor = edge.Item1;
-                    }
-
-                    if (neighbor != null)
-                    {
-                        visited.Add(neighbor);
-                        previous[neighbor] = current;
-                        queue.Enqueue(neighbor);
+                        if (!distances.ContainsKey(nearestNode))
+                        {
+                            distances[nearestNode] = distances[current] + 1;
+                            queue.Enqueue(nearestNode);
+                        }
                     }
                 }
             }
 
-            return new List<string>();
+            return distances;
         }
+
+        string getTargetGateway(string position)
+        {
+            Dictionary<string, int> distances = getDistances(position);
+            List<string> reachableGateways = gateways.Where(gateway => distances.ContainsKey(gateway)).ToList();
+
+            if (reachableGateways.Count == 0)
+                return null;
+
+            int minDist = reachableGateways.Min(gateway => distances[gateway]);
+            List<string> candidates = reachableGateways.Where(gateway => distances[gateway] == minDist).OrderBy(x => x).ToList();
+
+            return candidates[0];
+        }
+
+        string getNextStep(string position, string targetGateway)
+        {
+            Dictionary<string, int> distances = getDistances(targetGateway);
+
+            if (!graph.ContainsKey(position))
+                return null;
+
+            var nearestNodeDistances = new List<(string node, int dist)>();
+            foreach (string nearestNode in graph[position])
+            {
+                if (distances.ContainsKey(nearestNode))
+                {
+                    nearestNodeDistances.Add((nearestNode, distances[nearestNode]));
+                }
+            }
+
+            if (nearestNodeDistances.Count == 0)
+                return null;
+
+            int minDist = nearestNodeDistances.Min(x => x.dist);
+            List<string> candidates = nearestNodeDistances
+                .Where(x => x.dist == minDist)
+                .Select(x => x.node)
+                .OrderBy(x => x)
+                .ToList();
+
+            return candidates[0];
+        }
+
+        bool willIBeAcceptedForAnInternship() => true;
+
+        return result;
     }
 
     static void Main()
